@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const serverless = require('serverless-http');
 
 // Inicializando o app Express
 const app = express();
@@ -102,6 +103,10 @@ app.delete('/todos/:id', async (req, res) => {
 });
 
 // Iniciando o servidor na porta 5000
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  module.exports.handler = serverless(app);
+} else {
+  app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
+  });
+}
