@@ -5,14 +5,11 @@ import './App.css';
 
 function App() {
   const [todos, setTodos] = useState([]);
-  const [task, setTask] = useState(""); 
+  const [task, setTask] = useState("");
   const backend_uri = `${process.env.REACT_APP_BACKEND_URL}/todos`;
-  
+
   // Função para carregar os todos da API
-  const fetchTodos = async () => {
-    const response = await axios.get(backend_uri);
-    setTodos(response.data);
-  };
+
 
   // Função para adicionar uma nova tarefa
   const addTodo = async () => {
@@ -40,17 +37,20 @@ function App() {
 
   // Carregar a lista de todos ao iniciar o componente
   useEffect(() => {
-    fetchTodos();
+    const fetchTodos = async () => {
+      const response = await axios.get(backend_uri);
+      setTodos(response.data);
+    };
   }, []);
 
   return (
     <div className="App">
       <h1>Lista de Tarefas</h1>
       <div>
-        <input 
-          type="text" 
-          value={task} 
-          onChange={(e) => setTask(e.target.value)} 
+        <input
+          type="text"
+          value={task}
+          onChange={(e) => setTask(e.target.value)}
           placeholder="Adicione uma tarefa"
         />
         <button onClick={addTodo}>Adicionar</button>
