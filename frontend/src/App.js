@@ -6,7 +6,8 @@ import './App.css';
 function App() {
   const [todos, setTodos] = useState([]);
   const [task, setTask] = useState(""); 
-  const backend_uri = process.env.BACKEND_URL
+  const backend_uri = `${process.env.REACT_APP_BACKEND_URL}/todos`;
+  
   // Função para carregar os todos da API
   const fetchTodos = async () => {
     const response = await axios.get(backend_uri);
@@ -24,7 +25,7 @@ function App() {
 
   // Função para marcar a tarefa como concluída
   const toggleComplete = async (id) => {
-    const response = await axios.patch(`backend_uri${id}`);
+    const response = await axios.patch(`${backend_uri}/${id}`);
     const updatedTodos = todos.map(todo =>
       todo._id === id ? response.data : todo
     );
@@ -33,7 +34,7 @@ function App() {
 
   // Função para excluir a tarefa
   const deleteTodo = async (id) => {
-    await axios.delete(`backend_uri${id}`);
+    await axios.delete(`${backend_uri}/${id}`);
     setTodos(todos.filter(todo => todo._id !== id));
   };
 
