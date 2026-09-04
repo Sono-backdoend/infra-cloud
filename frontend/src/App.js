@@ -9,7 +9,10 @@ function App() {
   const backend_uri = `${process.env.REACT_APP_BACKEND_URL}/todos`;
 
   // Função para carregar os todos da API
-
+  const fetchTodos = async () => {
+    const response = await axios.get(backend_uri);
+    setTodos(response.data);
+  };
 
   // Função para adicionar uma nova tarefa
   const addTodo = async () => {
@@ -37,11 +40,8 @@ function App() {
 
   // Carregar a lista de todos ao iniciar o componente
   useEffect(() => {
-    const fetchTodos = async () => {
-      const response = await axios.get(backend_uri);
-      setTodos(response.data);
-    };
-  }, []);
+    fetchTodos()
+  }, [backend_uri]);
 
   return (
     <div className="App">
