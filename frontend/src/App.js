@@ -6,7 +6,7 @@ import './App.css';
 function App() {
   const [todos, setTodos] = useState([]);
   const [task, setTask] = useState("");
-  const backend_uri = `${process.env.REACT_APP_BACKEND_URL}/todos`;
+  const backend_uri = `${process.env.REACT_APP_BACKEND_URL}todos`;
 
   // Função para adicionar uma nova tarefa
   const addTodo = async () => {
