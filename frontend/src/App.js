@@ -21,7 +21,7 @@ function App() {
   const toggleComplete = async (id) => {
     const response = await axios.patch(`${backend_uri}/${id}`);
     const updatedTodos = todos.map(todo =>
-      todo._id === id ? response.data : todo
+      todo.id === id ? response.data : todo
     );
     setTodos(updatedTodos);
   };
@@ -29,7 +29,7 @@ function App() {
   // Função para excluir a tarefa
   const deleteTodo = async (id) => {
     await axios.delete(`${backend_uri}/${id}`);
-    setTodos(todos.filter(todo => todo._id !== id));
+    setTodos(todos.filter(todo => todo.id !== id));
   };
 
   // Carregar a lista de todos ao iniciar o componente
@@ -55,9 +55,9 @@ function App() {
       </div>
       <ul>
         {todos.map((todo) => (
-          <li key={todo._id} style={{ textDecoration: todo.completed ? "line-through" : "none" }}>
-            <span onClick={() => toggleComplete(todo._id)}>{todo.text}</span>
-            <button onClick={() => deleteTodo(todo._id)}>Excluir</button>
+          <li key={todo.id} style={{ textDecoration: todo.completed ? "line-through" : "none" }}>
+            <span onClick={() => toggleComplete(todo.id)}>{todo.text}</span>
+            <button onClick={() => deleteTodo(todo.id)}>Excluir</button>
           </li>
         ))}
       </ul>
