@@ -45,7 +45,7 @@ function App() {
   }, [backend_uri]);
 
   const findUserHours = async (userRa) => {
-    const response = await axios.get(backend_uri + '/hours/' + userRa);
+    const response = await axios.get(backend_uri + '/horas/' + userRa);
     setHours(response.data);
   }
 
