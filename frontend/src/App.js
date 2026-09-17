@@ -7,6 +7,8 @@ function App() {
   const [todos, setTodos] = useState([]);
   const [task, setTask] = useState("");
   const backend_uri = `${process.env.REACT_APP_BACKEND_URL}todos`;
+  const [hours, setHours] = useState([]);
+
 
   // Função para adicionar uma nova tarefa
   const addTodo = async () => {
@@ -41,27 +43,51 @@ function App() {
     fetchTodos();
   }, [backend_uri]);
 
+  const findUserHours = async (userRa) => {
+    const response = await axios.get(backend_uri + '/hours/' + userRa);
+    setHours(response.data);
+  }
+
   return (
-    <div className="App">
-      <h1>Lista de Tarefas</h1>
-      <div>
-        <input
-          type="text"
-          value={task}
-          onChange={(e) => setTask(e.target.value)}
-          placeholder="Adicione uma tarefa"
-        />
-        <button onClick={addTodo}>Adicionar</button>
+    <>
+      <div className="App">
+        <h1>Lista de Tarefas</h1>
+        <div>
+          <input
+            type="text"
+            value={task}
+            onChange={(e) => setTask(e.target.value)}
+            placeholder="Adicione uma tarefa"
+          />
+          <button onClick={addTodo}>Adicionar</button>
+        </div>
+        <ul>
+          {todos.map((todo) => (
+            <li key={todo.id} style={{ textDecoration: todo.completed ? "line-through" : "none" }}>
+              <span onClick={() => toggleComplete(todo.id)}>{todo.text}</span>
+              <button onClick={() => deleteTodo(todo.id)}>Excluir</button>
+            </li>
+          ))}
+        </ul>
+        <div>
+          <input
+            type="text"
+            value={userRa}
+            onChange={(e) => setUserRa(e.target.value)}
+            placeholder="RA do usuário"
+          />
+          <button onClick={() => findUserHours(userRa)}>Consultar</button>
+        </div>
+        <div>
+          <h2>Horas do Usuário</h2>
+          <ul>
+            {hours.map((hour) => (
+              <li key={hour.id}>{hour.description}: {hour.value} horas</li>
+            ))}
+          </ul>
+        </div>
       </div>
-      <ul>
-        {todos.map((todo) => (
-          <li key={todo.id} style={{ textDecoration: todo.completed ? "line-through" : "none" }}>
-            <span onClick={() => toggleComplete(todo.id)}>{todo.text}</span>
-            <button onClick={() => deleteTodo(todo.id)}>Excluir</button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </>
   );
 }
 
