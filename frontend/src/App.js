@@ -8,6 +8,7 @@ function App() {
   const [task, setTask] = useState("");
   const backend_uri = `${process.env.REACT_APP_BACKEND_URL}todos`;
   const [hours, setHours] = useState([]);
+  const [userRa, setUserRa] = useState("");
 
 
   // Função para adicionar uma nova tarefa
