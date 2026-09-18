@@ -1,3 +1,13 @@
+const path = require('path');
+
+// Em produção (Lambda) as variáveis já vêm do ambiente da própria função,
+// então só carregamos um arquivo .env-<NODE_ENV> quando rodando localmente.
+if (!process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  require('dotenv').config({
+    path: path.resolve(__dirname, `.env.${process.env.NODE_ENV || 'development'}`),
+  });
+}
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -14,6 +24,8 @@ const {
   DeleteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
+const { MongoClient } = require('mongodb');
+
 const { randomUUID } = require('crypto');
 
 // ======================================================
@@ -24,7 +36,70 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 const SERVICE_NAME = 'infra-cloud-backend';
-const ENVIRONMENT = process.env.APP_ENV || 'production';
+const ENVIRONMENT = process.env.APP_ENV || 'development';
+
+// Em produção (Lambda) o padrão continua sendo DynamoDB.
+// Para rodar localmente contra o MongoDB do docker-compose, defina DB_ENGINE=mongo no .env.
+const DB_ENGINE = (process.env.DB_ENGINE || 'dynamodb').toLowerCase();
+
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
+const MONGO_DB = process.env.MONGO_DB || 'infra_cloud';
+const MONGO_COLLECTION = process.env.MONGO_COLLECTION || 'todos';
+
+let mongoClient;
+let todosCollection;
+
+async function connectToMongo() {
+  mongoClient = new MongoClient(MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+  });
+
+  await mongoClient.connect();
+
+  const db = mongoClient.db(MONGO_DB);
+  todosCollection = db.collection(MONGO_COLLECTION);
+
+  logEvent('info', 'mongodb_connected', {
+    database: MONGO_DB,
+    collection: MONGO_COLLECTION,
+  });
+}
+
+async function executeMongo(operation, fn, requestId) {
+  const start = process.hrtime.bigint();
+
+  try {
+    const result = await fn();
+
+    const duration = Number(process.hrtime.bigint() - start) / 1_000_000;
+
+    logEvent('info', 'mongodb_operation', {
+      requestId,
+      operation,
+      collection: MONGO_COLLECTION,
+      result: 'success',
+      duration: Number(duration.toFixed(2)),
+      durationUnit: 'ms',
+    });
+
+    return result;
+  } catch (err) {
+    const duration = Number(process.hrtime.bigint() - start) / 1_000_000;
+
+    logEvent('error', 'mongodb_operation', {
+      requestId,
+      operation,
+      collection: MONGO_COLLECTION,
+      result: 'failure',
+      duration: Number(duration.toFixed(2)),
+      durationUnit: 'ms',
+      errorType: err.name || 'Error',
+      errorMessage: sanitizeErrorMessage(err.message),
+    });
+
+    throw err;
+  }
+}
 
 const dynamoClient = new DynamoDBClient({
   region: process.env.AWS_REGION || 'us-east-2',
@@ -124,6 +199,9 @@ app.use(
     origin: [
       'https://infra-cloud-ten.vercel.app',
       'https://www.sonobackdoend.duckdns.org',
+      // Porta 80 é a padrão do HTTP, então o navegador manda o Origin sem
+      // ":80" quando o frontend local (docker-compose/nginx) roda nela.
+      'http://localhost',
     ],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -199,6 +277,16 @@ app.get('/health', (req, res) => {
 
 app.get('/todos', async (req, res) => {
   try {
+    if (DB_ENGINE === 'mongo') {
+      const items = await executeMongo(
+        'find',
+        () => todosCollection.find({}, { projection: { _id: 0 } }).toArray(),
+        req.requestId
+      );
+
+      return res.json(items);
+    }
+
     const result = await executeDynamoDB(
       'Scan',
       new ScanCommand({
@@ -241,6 +329,18 @@ app.post('/todos', async (req, res) => {
   };
 
   try {
+    if (DB_ENGINE === 'mongo') {
+      // Passa uma cópia: o driver do Mongo muta o objeto do insertOne
+      // adicionando _id, e não queremos vazar esse campo na resposta.
+      await executeMongo(
+        'insertOne',
+        () => todosCollection.insertOne({ ...todo }),
+        req.requestId
+      );
+
+      return res.status(201).json(todo);
+    }
+
     await executeDynamoDB(
       'PutItem',
       new PutCommand({
@@ -261,6 +361,43 @@ app.post('/todos', async (req, res) => {
   }
 });
 
+
+// CONSULTA A API DE HORAS DO PROFESSOR
+app.get('/todos/horas', async (req, res) => {
+  try {
+    const ra = req.query.ra;
+    if (!ra) {
+      return res.status(400).json({ message: 'O parâmetro "ra" é obrigatório' });
+    }
+
+    const response = await fetch(process.env.API_HORAS_URL + 'hours?ra=' + ra, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.API_HORAS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      return res.status(response.status).json({ message: `Erro ao buscar horas: ${errorBody}` });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.locals.errorType = err.name || 'Error';
+    // "fetch failed" (undici) só embrulha a causa real (DNS, TLS, conexão
+    // recusada etc.), que fica em err.cause — sem isso o log não diz nada.
+    const causeMessage = err.cause ? `${err.message}: ${err.cause.message || err.cause}` : err.message;
+    res.locals.errorMessage = sanitizeErrorMessage(causeMessage);
+
+    res.status(500).json({
+      message: 'Erro ao consultar horas do usuário',
+    });
+  }
+});
+
 // ======================================================
 // PATCH /todos/:id
 // ======================================================
@@ -269,6 +406,37 @@ app.patch('/todos/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
+    if (DB_ENGINE === 'mongo') {
+      const current = await executeMongo(
+        'findOne',
+        () => todosCollection.findOne({ id }, { projection: { _id: 0 } }),
+        req.requestId
+      );
+
+      if (!current) {
+        res.locals.errorType = 'NotFound';
+        res.locals.errorMessage = 'Tarefa não encontrada';
+
+        return res.status(404).json({
+          message: 'Tarefa não encontrada',
+        });
+      }
+
+      const updatedCompleted = !current.completed;
+
+      await executeMongo(
+        'updateOne',
+        () =>
+          todosCollection.updateOne(
+            { id },
+            { $set: { completed: updatedCompleted } }
+          ),
+        req.requestId
+      );
+
+      return res.json({ ...current, completed: updatedCompleted });
+    }
+
     const current = await executeDynamoDB(
       'GetItem',
       new GetCommand({
@@ -322,6 +490,33 @@ app.delete('/todos/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
+    if (DB_ENGINE === 'mongo') {
+      const current = await executeMongo(
+        'findOne',
+        () => todosCollection.findOne({ id }, { projection: { _id: 0 } }),
+        req.requestId
+      );
+
+      if (!current) {
+        res.locals.errorType = 'NotFound';
+        res.locals.errorMessage = 'Tarefa não encontrada';
+
+        return res.status(404).json({
+          message: 'Tarefa não encontrada',
+        });
+      }
+
+      await executeMongo(
+        'deleteOne',
+        () => todosCollection.deleteOne({ id }),
+        req.requestId
+      );
+
+      return res.json({
+        message: 'Tarefa excluída com sucesso',
+      });
+    }
+
     const current = await executeDynamoDB(
       'GetItem',
       new GetCommand({
@@ -366,13 +561,22 @@ app.delete('/todos/:id', async (req, res) => {
 // EXECUÇÃO LOCAL OU AWS LAMBDA
 // ======================================================
 
-if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
-  module.exports.handler = serverless(app);
-} else {
-  app.listen(port, () => {
-    logEvent('info', 'server_started', {
-      port,
-      result: 'success',
+async function start() {
+  if (DB_ENGINE === 'mongo') {
+    await connectToMongo();
+  }
+
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    module.exports.handler = serverless(app);
+  } else {
+    app.listen(port, () => {
+      logEvent('info', 'server_started', {
+        port,
+        dbEngine: DB_ENGINE,
+        result: 'success',
+      });
     });
-  });
+  }
 }
+
+start();

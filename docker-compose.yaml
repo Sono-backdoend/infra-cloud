@@ -1,9 +1,11 @@
-version: '3.8'
-
 services:
   frontend:
     build:
       context: ./frontend  # Diretório do frontend
+      args:
+        # Sobrescreve o .env.production do build para apontar para o backend
+        # local exposto pelo compose, em vez da API Gateway da AWS.
+        REACT_APP_BACKEND_URL: http://localhost:5000/
     ports:
       - "80:80"  # Expõe a porta 80 do contêiner para a porta 80 do host
     networks:
@@ -16,6 +18,11 @@ services:
       context: ./backend  # Diretório do backend
     ports:
       - "5000:5000"  # Expõe a porta 5000 do contêiner para a porta 5000 do host
+    environment:
+      - DB_ENGINE=mongo
+      - MONGO_URI=mongodb://root:rootpassword@mongo:27017/?authSource=admin
+      - MONGO_DB=todo-app
+      - MONGO_COLLECTION=todos
     networks:
       - todo-net
     depends_on:
